@@ -1,0 +1,224 @@
+---
+title: "Clustering Cells by NF-kB Intensity"
+author: "Joshua Cook"
+date: "9/7/2019"
+output:
+    html_document:
+        toc: true
+        toc_float: false
+        toc_depth: 3
+        theme: paper
+        df_print: paged
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_sections: true
+---
+
+```{r setup, include=FALSE}
+# set global knitr options
+knitr::opts_chunk$set(
+    echo = TRUE,
+    comment = "#>")
+
+# set seed for simulation
+set.seed(2)
+
+# load libraries
+library(mclust)
+library(cowplot)
+library(tidyverse)
+```
+
+## Overview
+
+### Purpose of this document
+
+This document is meant to serve as an example of how to conduct data analysis in R Markdown. It is meant to accompany an [introductory page](https://canvas.harvard.edu/courses/57521/pages/introduction-to-r-markdown) available to the BMI 713 course at Harvard Medical School.
+
+For coding in R, I tend to follow a mixture of [Google's R Style Guide](https://google.github.io/styleguide/Rguide.html) and that encouraged by the [Tidyverse](https://style.tidyverse.org).
+
+### The mock analysis
+
+The goal of the analysis coducted below was to separate cells into two groups based on the intesnity of the immunofluorescent signal of nuclear NF-$\kappa$B. The [Mock Data](#mockData) section created the data for two populations with normally-distributed NF-$\kappa$B signals. The [Clustering](#clustering) section then classified each cell into one of two groups based on its fluorescence intensity. 
+
+
+## Mock Data {#mockData}
+
+### Creation
+
+Here, I create some mock data consisting of three columns: `nucleus_id`, `nfkb_intensity`, and `real_group`. It is intended to represent the nuclear intensity of NF-$\kappa$B in a microscopy image containing `n_cells`cells. There are two groups in this population, each with a different normally-distributed fluorescence intensity. In a real analysis, the true identity of the groups would not be known, but this will be used for validation in this example analysis.
+
+```{r}
+# total number of cells in a microscopy image
+n_cells <- 1e5
+# randomly select number of cells for group 1
+n_group1 <- sample(1:n_cells, 1)
+# make test data
+#   nucleus ID: a unique label for each nucleus in the image
+#   nfkb_intensity: intensity of the NK-kB probe in the cells
+#   real group: the known label for each cell
+df <- tibble(
+    nucleus_id = paste("nucleus", 1:n_cells),
+    nfkb_intensity = c(
+        rnorm(n_group1, mean = 50, sd = 15),
+        rnorm(n_cells - n_group1, mean = 100, sd = 15)
+    ),
+    real_group = c(
+        rep(1, n_group1),
+        rep(2, n_cells - n_group1)
+    )
+)
+```
+
+### Shuffle
+
+To be sure that I am not somehow cheating because the data frame is in order by group, I shuffled the rows of the data frame.
+
+```{r shuffle_dfrows}
+# shuffle the rows by shuffling the row indices
+df <- df[sample(1:nrow(df)), ]
+```
+
+```{r show_df, echo=FALSE}
+# the data frame will be displayed as a paging table
+# since `echo=FALSE` for this chunk, the code will not be visible
+df
+```
+
+### Visualization of the groups
+
+A histogram of the intensity data is shown below. The coloration is of the real groups that would normally not be known. I randomly selected the number of cells for group 1 (between 1 and the total number of cells). This value was `r n_group1`, meaning there are `r n_cells - n_group1` cells in group 2.
+
+```{r intensity_hist, echo=FALSE}
+# 'ggplot2' is a plotting package that makes R such a great visualization tool
+# we will learn more about it as the course progresses
+ggplot(df, aes(x = nfkb_intensity)) +
+    geom_histogram(
+        aes(fill = factor(real_group), color = factor(real_group)),
+        position = "identity",
+        alpha = 0.2,
+        bins = 50) +
+    scale_y_continuous(expand = expand_scale(mult = c(0, 0.02))) +
+    scale_fill_manual(values = c("dodgerblue", "tomato")) +
+    scale_color_manual(values = c("dodgerblue", "tomato")) +
+    theme_classic() +
+    labs(
+        x = "nuclear NF-kB intensity",
+        y = "count",
+        fill = "known group",
+        color = "known group"
+    )
+```
+
+## Clustering {#clustering}
+
+### Installing 'mclust'
+
+For this analysis, I used the ['mclust'](https://cran.r-project.org/web/packages/mclust/index.html) package to identify the two groups in the data. It can be downloaded from CRAN using the following command. (Note that I inlcude `eval=FALSE` in the chunk header so that I don't install the package every time I knit the document.) A thorough explanation of the many features of this package are available in the ["A quick tour of mclust" vignette](https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html).
+
+```{r download_mclust, eval=FALSE}
+# install 'mclust' from CRAN
+install.packages("mclust")
+```
+
+### Using BIC to identify the number of clusters
+
+The Bayesian Information Criterion (BIC) can be used to predict how many clusters exist in the data.
+
+```{r bic_calc}
+# identify the optimal number of groups using the BIC
+nfkb_bic <- mclustBIC(df$nfkb_intensity, verbose = FALSE)
+```
+
+A summary of the results, shown below, along with the plot, clearly indicate that there are likely two clusters in the data (as expected). The `nfkb_bic` object can be used in the clustering function, next.
+
+```{r bic_results, echo=FALSE}
+# print some summary information
+summary(nfkb_bic)
+plot(nfkb_bic)
+```
+
+### Clustering by NK-$\kappa$B intensity
+
+The `Mclust` function actually does the clustering of the data. At first glance, the summary statistics indicate that the clustering was quite successful.
+
+```{r cluster_calc}
+# cluster the intensity values
+fit <- Mclust(df$nfkb_intensity, x = nfkb_bic)
+```
+
+```{r cluster_results, echo=FALSE}
+summary(fit, parameters = TRUE)
+```
+
+As shown by the summary of the model, the means of the two groups were very acurately predicted as `r round(summary(fit)$mean[[1]], 1)` and `r round(summary(fit)$mean[[2]], 1)`. The resultant classification of each cell by the NF-$\kappa$B intensity is shown below (**A**). Some cells were mislabeled comapred to their real group because they had intensity values more simillar to the other group. Because there are only two groups that are easy to distinguish by eye, the clusters were split into two about halfway between the means. Accordingly, the uncertainty of each classification increased as this boundary was approached (**B**).
+
+```{r cluster_plot, echo=FALSE, warning=FALSE, message=FALSE}
+df$clustered <- fit$classification
+df$uncertainty <- fit$uncertainty
+cls_hist <- ggplot(df, aes(x = nfkb_intensity)) +
+    geom_histogram(
+        aes(color = factor(clustered), fill = factor(clustered)),
+        position = "identity",
+        alpha = 0.2,
+        bins = 50) +
+    scale_y_continuous(expand = expand_scale(mult = c(0, 0.02))) +
+    scale_fill_manual(values = c("dodgerblue", "tomato")) +
+    scale_color_manual(values = c("dodgerblue", "tomato")) +
+    theme_classic() +
+    theme(
+        plot.title = element_text(hjust = 0.5)
+    ) +
+    labs(
+        x = "nuclear NF-kB intensity",
+        y = "count",
+        fill = "clustered\ngroup",
+        color = "clustered\ngroup",
+        title = "Clustering Results"
+    )
+cls_uncert <- ggplot(df, aes(x = nfkb_intensity, y = uncertainty)) +
+    geom_line(aes(color = uncertainty), size = 2) +
+    scale_y_continuous(expand = expand_scale(mult = c(0, 0.02))) +
+    scale_color_viridis_c() +
+    theme_classic() +
+    labs(
+        x = "nuclear NF-kB intensity",
+        y = "uncertainty",
+        color = "uncertainty"
+    )
+
+plot_grid(cls_hist, cls_uncert,
+          nrow = 2,
+          align = "v",
+          labels = "AUTO")
+```
+
+The table below shows the concoradance between the real groups (vertical) and the clustered groups (horizontal). The values on the diagonal represent the number of correct classifications whereas the off-diagonal values are the number of misclassified cells.
+
+```{r cluster_tbl}
+tbl <- table(df$real_group, df$clustered)
+colnames(tbl) <- paste("cls", colnames(tbl))
+rownames(tbl) <- paste("real", rownames(tbl))
+tbl
+```
+
+### Accuracy
+
+To quantify the success of the clustering, the accuracy was calculated. This metric is defined as follows:
+
+$$
+ACC = \frac{\text{correctly classified}}{\text{total cells}}
+$$
+
+**Thus, the accuracy of the classification was `r round(sum(df$real_group == df$clustered) / n_cells, 3)`.**
+
+---
+
+### Session Info
+
+Below is a summary of the R session used for the R Markdown file.
+
+```{r print_sessioninfo}
+sessionInfo()
+```
