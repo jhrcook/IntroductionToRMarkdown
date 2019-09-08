@@ -12,6 +12,6 @@ git clone https://github.com/jhrcook/IntroductionToRMarkdown.git
 cd IntroductionToRMarkdown
 ```
 
-Alternatively, you can download the repository as a ZIP file by selecting that option in the drop-down menu for "Clone or download" in GitHub (or clicking [here](https://github.com/jhrcook/IntroductionToRMarkdown/archive/master.zip).
+Alternatively, you can download the repository as a ZIP file by selecting that option in the drop-down menu for "Clone or download" in GitHub (or clicking [here](https://github.com/jhrcook/IntroductionToRMarkdown/archive/master.zip)).
 
 You can now open the RStudio project and experiement with the file.
